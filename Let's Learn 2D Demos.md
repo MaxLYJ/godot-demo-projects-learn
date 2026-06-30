@@ -113,17 +113,36 @@ Recommended reading order within this chapter: **custom_drawing → polygons_lin
 
 ---
 
-## Chapter 3 — Tilemaps 🔧
+## Chapter 3 — Tilemaps ✅
 
-*Building worlds out of grid tiles, including non-square grids. Reading order: **isometric → hexagonal_map → dynamic_tilemap_layers**.*
+*Building worlds out of grid tiles — including non-square (isometric and hexagonal) grids — and modifying them at runtime. Reading order: **isometric → hexagonal_map → dynamic_tilemap_layers**.*
 
-| Demo | Folder | README |
-|------|--------|--------|
-| Isometric | [`2d/isometric/`](2d/isometric/) | [`README`](2d/isometric/README.md) |
-| Hexagonal Map | [`2d/hexagonal_map/`](2d/hexagonal_map/) | [`README`](2d/hexagonal_map/README.md) |
-| Dynamic TileMap Layers | [`2d/dynamic_tilemap_layers/`](2d/dynamic_tilemap_layers/) | [`README`](2d/dynamic_tilemap_layers/README.md) |
+> All three demos use Godot 4's dedicated **`TileMapLayer`** node (one layer per node) rather than the older single `TileMap` that held many layers internally; several upstream READMEs still say "TileMap," but the `.tscn` files now instance `TileMapLayer`. The grid *shape* (square / isometric / hexagon) lives in the shared **`TileSet`** resource (`tile_shape`, `tile_layout` / `tile_offset_axis`, `tile_size`).
 
-> Detailed per-demo entries will be added in a later pass.
+### 3.1 — Isometric
+
+- **Folder:** [`2d/isometric/`](2d/isometric/) · **README:** [`2d/isometric/README.md`](2d/isometric/README.md#how-to-learn-this-project)
+- **Summary:** A fully lit isometric dungeon. A goblin walks in eight directions, slides along walls, and is correctly occluded by — and depth-sorted behind — pillars and tall objects. It is the chapter's flagship because it stacks tile rendering, depth sorting, collision, movement, animation, *and* 2D lighting into a single scene.
+- **Core concepts:** The `TileSet` isometric settings (`tile_shape = ISOMETRIC`, `tile_layout = DIAMOND_RIGHT`, `tile_size = 128×64` — the classic 2:1 ratio); multiple `TileMapLayer` nodes (`Floor` / `Walls` / `HighWalls`) sharing one `TileSet`; **Y-sorting** for depth (`y_sort_enabled` on each layer *and* its parent `Node2D`, plus `y_sort_origin` so a tile's sort point is its base, not its top); isometric input (`motion.y /= 2` before `normalized()` so on-screen diagonals match the projection); 8-direction sprite selection by slicing a movement vector into 45° wedges (`floor((rad_to_deg(angle) + 22.5) / 45)`); collision stored in the `TileSet`'s physics layer; and 2D lighting (`PointLight2D` with `shadow_enabled`, `LightOccluder2D`, `light_mask`, and `CanvasItemMaterial.light_mode` / `blend_mode` for additive glows and masked shadows).
+- **Why read it first:** The most complete tilemap demo in the whole repo and the one most worth reverse-engineering; the two simpler demos below isolate individual techniques you'll first see combined here.
+
+---
+
+### 3.2 — Hexagonal Map
+
+- **Folder:** [`2d/hexagonal_map/`](2d/hexagonal_map/) · **README:** [`2d/hexagonal_map/README.md`](2d/hexagonal_map/README.md#how-to-learn-this-project)
+- **Summary:** A minimal hex-grid world: one `TileMapLayer`, one walkable troll, no lighting or sorting. The point is to show *only* what changes when the grid is hexagonal — both in the `TileSet` and in how the input axes are read.
+- **Core concepts:** The `TileSet` hex settings (`tile_shape = HEXAGON`, `tile_offset_axis = OFFSET_AXIS_VERTICAL` for flat-top hexes, `tile_size = 110×94`); hex-aware input (`motion.y *= tan(deg_to_rad(30))` ≈ 0.577 to compress vertical movement onto the hex projection); an **acceleration + friction** movement model (`velocity += motion.normalized() * SPEED` then `velocity *= 0.89` each physics tick, rather than setting velocity directly); `CharacterBody2D` + `CircleShape2D` + `Camera2D`; and HDR-bright sprites (`modulate = Color(1.5, 1.5, 1.5)`, which only reads as >1.0 on Forward+/Mobile).
+- **Why read it second:** A stripped-down sibling of 3.1 that isolates the *non-square grid* idea and contrasts a different movement feel (inertial friction vs. the goblin's instant velocity) so the isometric demo doesn't have to carry every concept alone.
+
+---
+
+### 3.3 — Dynamic TileMap Layers
+
+- **Folder:** [`2d/dynamic_tilemap_layers/`](2d/dynamic_tilemap_layers/) · **README:** [`2d/dynamic_tilemap_layers/README.md`](2d/dynamic_tilemap_layers/README.md#how-to-learn-this-project)
+- **Summary:** A side-scrolling level with a hidden room: walking into a region fades the "secret" wall semi-transparent *and* disables its collision so the player passes straight through. It demonstrates modifying **`TileData` per physics frame** to change a tile's behavior at runtime.
+- **Core concepts:** The runtime-tile-data override pair `_use_tile_data_runtime_update()` (return `true` to opt a tile into per-frame updates) and `_tile_data_runtime_update()` (mutate the `TileData` — here `set_collision_polygons_count(0, 0)` to strip the collision polygon and make a passable "fake wall"); animating a whole layer's transparency via `self_modulate` alpha driven by `move_toward()` and toggled with `set_process()`; an `Area2D` "secret detector" whose `body_entered` / `body_exited` signals trigger the effect; and classic platformer movement (gravity + `move_and_slide()` + `is_on_floor()` jump). The README also flags the modern shortcut: Godot 4.3+ `TileMapLayer` can disable a layer's collision with an Inspector checkbox — this demo shows the scriptable, per-tile version of the same trick.
+- **Why read it last:** The capstone — the only demo that treats the tilemap as *mutable data* rather than static scenery, and a direct lead-in to the runtime/scripting mindset of the physics and navigation chapters that follow.
 
 ---
 
@@ -199,4 +218,4 @@ Recommended reading order within this chapter: **custom_drawing → polygons_lin
 
 ---
 
-*This is a living document. Chapters 1 and 2 are complete; chapters 3–8 are outlined above and will be expanded with detailed per-demo entries (summary, core concepts, and a README link) as the curriculum is built out.*
+*This is a living document. Chapters 1–3 are complete; chapters 4–8 are outlined above and will be expanded with detailed per-demo entries (summary, core concepts, and a README link) as the curriculum is built out.*
