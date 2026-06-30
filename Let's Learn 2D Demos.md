@@ -26,7 +26,7 @@ Read top-to-bottom and you will build real, transferable Godot skills — every 
 | 3 | [Tilemaps](#chapter-3--tilemaps) | Intermediate | isometric, hexagonal_map, dynamic_tilemap_layers |
 | 4 | [2D Physics](#chapter-4--2d-physics) | Intermediate→Advanced | kinematic_character, platformer, physics_platformer, physics_tests, bullet_shower |
 | 5 | [Navigation & Pathfinding](#chapter-5--navigation--pathfinding) | Intermediate→Advanced | navigation, navigation_astar, navigation_mesh_chunks |
-| 6 | [Shaders & Lighting](#chapter-6--shaders--lighting) | Advanced | glow, light2d_as_mask, lights_and_shadows, screen_space_shaders, sprite_shaders |
+| 6 | [Shaders & Lighting](#chapter-6--shaders--lighting) | Advanced | sprite_shaders, glow, light2d_as_mask, lights_and_shadows, screen_space_shaders |
 | 7 | [Animation, Skeletons & Particles](#chapter-7--animation-skeletons--particles) | Advanced | skeleton, particles |
 | 8 | [Game Architecture & Larger Projects](#chapter-8--game-architecture--larger-projects) | Advanced | finite_state_machine, role_playing_game |
 
@@ -234,19 +234,56 @@ This chapter's arc is a descent through the abstraction stack: 5.1 drives naviga
 
 ---
 
-## Chapter 6 — Shaders & Lighting 🔧
+## Chapter 6 — Shaders & Lighting ✅
 
-*GPU programming for 2D: per-sprite and full-screen shaders, plus 2D lights and shadows. Reading order: **sprite_shaders → glow → light2d_as_mask → lights_and_shadows → screen_space_shaders**.*
+*GPU programming for 2D: per-sprite fragment shaders, the engine's built-in screen-space bloom, the 2D light/shadow system, and finally full-screen post-processing. Reading order: **sprite_shaders → glow → light2d_as_mask → lights_and_shadows → screen_space_shaders**.*
 
-| Demo | Folder | README |
-|------|--------|--------|
-| Sprite Shaders | [`2d/sprite_shaders/`](2d/sprite_shaders/) | [`README`](2d/sprite_shaders/README.md) |
-| Glow | [`2d/glow/`](2d/glow/) | [`README`](2d/glow/README.md) |
-| Light2D as Mask | [`2d/light2d_as_mask/`](2d/light2d_as_mask/) | [`README`](2d/light2d_as_mask/README.md) |
-| Lights and Shadows | [`2d/lights_and_shadows/`](2d/lights_and_shadows/) | [`README`](2d/lights_and_shadows/README.md) |
-| Screen-space Shaders | [`2d/screen_space_shaders/`](2d/screen_space_shaders/) | [`README`](2d/screen_space_shaders/README.md) |
+This chapter's arc runs from a shader you write *on one sprite* to a shader you write *on the whole screen*, with the engine's lighting system as the middle. You begin by hand-authoring a `canvas_item` fragment shader that samples a sprite's own texture (**6.1**), then see the glow effect you *don't* write yourself — Godot's built-in bloom driven by an `Environment` and HDR pixel values (**6.2**) — then meet `Light2D` used as a reveal mask (**6.3**), then the full light + shadow + normal-map rig (**6.4**), and finally you read the already-rendered frame back into a shader for full-screen post-processing (**6.5**).
 
-> Detailed per-demo entries will be added in a later pass.
+---
+
+### 6.1 — Sprite Shaders
+
+- **Folder:** [`2d/sprite_shaders/`](2d/sprite_shaders/) · **README:** [`2d/sprite_shaders/README.md`](2d/sprite_shaders/README.md#how-to-learn-this-project) · **Renderer:** Compatibility.
+- **Summary:** One sprite (`godotea.png`) shown ten times, each with a different `canvas_item` fragment shader: **outline**, **aura**, **blur**, **fatty**, **drop shadow**, **offset shadow**, **silhouette**, **glow**, and **disintegrate** (plus a normal copy). Each effect is a standalone `.gdshader` file assigned to the sprite via a `ShaderMaterial`. It is the Rosetta stone for "how do I write a 2D pixel shader that reads the sprite it's attached to."
+- **Core concepts:** The `shader_type canvas_item;` program and the `fragment()` function; the built-ins `TEXTURE`, `UV`, `COLOR`, and especially **`TEXTURE_PIXEL_SIZE`** (the size of one texel, used to offset neighbor samples); `render_mode` (`blend_mix`, `blend_premul_alpha`); **`uniform`** parameters exposed to the Inspector as `shader_parameter/…` (e.g. `outline_width`, `aura_color`, `radius`, `amount`, `fattyness`, `offset`); the `: source_color` hint for color uniforms; the two recurring techniques — **multi-tap neighbor sampling** for outline/blur/glow (sampling `TEXTURE` at `UV ± offset * TEXTURE_PIXEL_SIZE` and `max`/`min`-ing or averaging the alpha), and a **hash-based pseudo-noise** for disintegrate (`fract(sin(dot(UV, …)) * 438.5453)` modulating alpha); assigning a shader to a `Sprite2D` through a `ShaderMaterial` sub-resource in the `.tscn`; and the parent `Node2D`'s own `ShaderMaterial` (the outline) inherited by all children.
+- **Why here first:** It is the foundational "write a fragment shader" exercise — every shader later in the chapter reuses `TEXTURE`/`UV`/`TEXTURE_PIXEL_SIZE` and `uniform` parameters you first see here.
+
+---
+
+### 6.2 — Glow (WorldEnvironment bloom)
+
+- **Folder:** [`2d/glow/`](2d/glow/) · **README:** [`2d/glow/README.md`](2d/glow/README.md#how-to-learn-this-project) · **Renderer:** Mobile (HDR glow is a Forward+/Mobile feature).
+- **Summary:** A beach/cave scene whose bright areas bloom — but you write **no shader at all**. The bloom comes from a `WorldEnvironment` node holding an `Environment` resource with `glow_enabled = true` and per-level `glow_levels/5/6/7` intensities. Pixels brighter than 1.0 (the beach sprite is `modulate = Color(2, 2, 2)` — HDR overbright) spill into surrounding pixels. Press <kbd>G</kbd> to toggle a **glow map** (a "lens dirt" texture that masks *where* the bloom appears); drag to pan.
+- **Core concepts:** `WorldEnvironment` + the **`Environment`** resource as the home of 2D/3D post effects; **`glow_enabled`**, the **`glow_levels`** (bloom mip levels and their strengths), `glow_intensity`, and `glow_map` (the lens-dirt texture); **HDR overbright** — `modulate`/`self_modulate` values `> 1.0` only read as brighter than white on the Forward+/Mobile renderer, which is what *feeds* the bloom (a Compatibility demo could not bloom this way); **tonemapping** (`tonemap_mode = 4` = AGX, plus `tonemap_agx_contrast`) which compresses the HDR range back to displayable color after glow; `Environment.background_mode = BG_CANVAS` so the 3D environment shows the 2D canvas; and a separate **`CanvasLayer`** for the HUD `Label` so the text is *not* bloomed. The script (`beach_cave.gd`) toggles the glow map live and compensates by doubling `glow_intensity` when the map is on.
+- **Why here second:** After hand-writing a per-pixel shader in 6.1, this is the opposite pole — a major screen-space effect you get "for free" by configuring an `Environment`, no GLSL required.
+
+---
+
+### 6.3 — Light2D as Mask
+
+- **Folder:** [`2d/light2d_as_mask/`](2d/light2d_as_mask/) · **README:** [`2d/light2d_as_mask/README.md`](2d/light2d_as_mask/README.md#how-to-learn-this-project) · **Renderer:** Compatibility.
+- **Summary:** A photograph (`burano.png`) that is **invisible except where three moving lights touch it** — a "flashlight revealing a picture" effect. The trick is one `CanvasItemMaterial` property: the photo's material is `light_mode = LIGHT_MODE_ONLY_LIGHT`, so it renders *only* where a `Light2D` illuminates it. Three animated `PointLight2D`s (each textured with a `splat.png` blob and `blend_mode = MIX`) sweep across the image, carving it out of black.
+- **Core concepts:** `CanvasItemMaterial.light_mode` and its **`LIGHT_MODE_ONLY_LIGHT`** value (the surface is black where unlit, visible only inside a light's coverage — the actual "masking" mechanism); `PointLight2D` with a **`texture`** that shapes the light's falloff (here an organic splat blob instead of the default radial gradient); the light's **`blend_mode`** (`MIX` reveals the photo at its true color rather than `ADD`-ing brightness on top); driving the lights from an **`AnimationPlayer`** that animates each light's `position` on a loop; and the contrast with 6.4 — this demo uses *no shadows, no occluders, no normal maps*, just the mask, isolating that one idea.
+- **Why read it third:** The smallest possible lighting demo. It introduces `Light2D` and the `CanvasItemMaterial` light modes before the full light/shadow rig in 6.4 loads on every concept at once.
+
+---
+
+### 6.4 — Lights and Shadows
+
+- **Folder:** [`2d/lights_and_shadows/`](2d/lights_and_shadows/) · **README:** [`2d/lights_and_shadows/README.md`](2d/lights_and_shadows/README.md#how-to-learn-this-project) · **Renderer:** Compatibility.
+- **Summary:** The comprehensive 2D lighting reference. A dark scene lit by **three colored `PointLight2D`s** (red/green/blue) that cast real **shadows** from 15 shadow-casting blocks, plus a slowly-rotating **`DirectionalLight2D`**. Sprites use a **`CanvasTexture`** with a normal map so the lights shade them with real surface relief, shown in four flip variants (normal / flip-X / flip-Y / flip-both). `CanvasModulate` sets the dark ambient. Input toggles lights on/off and cycles **shadow-filter quality** live.
+- **Core concepts:** **`PointLight2D`** (`color`, `texture`, `range`, `energy`) and **`DirectionalLight2D`** (parallel rays, `height`, `energy`); **shadows** — `shadow_enabled`, `shadow_filter` (`SHADOW_FILTER_NONE`/`_PCF5`/`_PCF13`), and `shadow_filter_smooth`, cycled at runtime via `wrapi(…, 0, 3)`; **`LightOccluder2D`** + **`OccluderPolygon2D`** defining each shadow caster's silhouette; **`CanvasModulate`** for global ambient tint; **`CanvasTexture`** as a richer texture type — `diffuse_texture`, **`normal_texture`** (per-pixel surface normals the lights shade against), and `specular_shininess` (cheap specular highlight); node **groups** (`point_light`) toggled with `get_nodes_in_group()`; **`AnimationPlayer`** moving the lights along looping tracks and rotating the sun; and the **important caveat** that 2D lights are ignored by sprites whose `CanvasItemMaterial.light_mode = LIGHT_MODE_UNSHADED`.
+- **Why read it fourth:** The exhaustive lighting rig — every 2D-light concept in one scene — so it is the place to *see* shadows, occluders, and normal/specular shading working together after 6.3 introduced the bare `Light2D`.
+
+---
+
+### 6.5 — Screen-space Shaders
+
+- **Folder:** [`2d/screen_space_shaders/`](2d/screen_space_shaders/) · **README:** [`2d/screen_space_shaders/README.md`](2d/screen_space_shaders/README.md#how-to-learn-this-project) · **Renderer:** Compatibility.
+- **Summary:** A full-screen post-processing gallery. Two `OptionButton` dropdowns pick a source photo and an effect; 11 effects (vignette, blur, pixelize, whirl, sepia, negative, contrasted, normalized, BCS, mirage, **old film**) each process the **entire rendered frame** through a `canvas_item` shader. The key difference from 6.1: these shaders don't read the sprite's own texture — they read **the screen itself** via a `hint_screen_texture` uniform sampled at `SCREEN_UV`.
+- **Core concepts:** The **`hint_screen_texture`** uniform (`uniform sampler2D screen_texture : hint_screen_texture, filter_linear_mipmap;`) that gives a fragment shader access to the already-rendered frame; **`SCREEN_UV`** (the screen-space coordinate) vs the sprite's `UV`; sampling the back-buffer with **`textureLod(screen_texture, SCREEN_UV, lod)`** — and using its **mip levels** for cheap Gaussian blur (the vignette shader blurs by raising the LOD by the vignette darkness); implementing the effect families: **color math** (sepia/negative/BCS/contrasted/normalized via `dot(lum_weights)`, contrast, brightness, saturation), **coordinate warping** (whirl's polar rotation, mirage's sine wobble, pixelize's `mod()` quantization), **multi-tap blur**, and **time-driven effects** (`old_film` keys its grain/scratch/flicker to `TIME` quantized by an `fps` uniform for a choppy film look); the **full-screen-quad pattern** — a full-rect `TextureRect` with a blank `white.png` texture whose `material` (`ShaderMaterial`) overrides `COLOR` from the screen; and the `_ready()`/`item_selected` show-one-hide-all UI driven by node-children enumeration.
+- **Why read it last:** The capstone — it takes the `fragment()` shader you wrote per-sprite in 6.1 and scales it to the whole screen, completing the chapter's journey from "shader on one node" to "shader on the entire frame."
 
 ---
 
@@ -276,4 +313,4 @@ This chapter's arc is a descent through the abstraction stack: 5.1 drives naviga
 
 ---
 
-*This is a living document. Chapters 1–5 are complete; chapters 6–8 are outlined above and will be expanded with detailed per-demo entries (summary, core concepts, and a README link) as the curriculum is built out.*
+*This is a living document. Chapters 1–6 are complete; chapters 7–8 are outlined above and will be expanded with detailed per-demo entries (summary, core concepts, and a README link) as the curriculum is built out.*
