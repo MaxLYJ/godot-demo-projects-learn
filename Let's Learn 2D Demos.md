@@ -287,16 +287,29 @@ This chapter's arc runs from a shader you write *on one sprite* to a shader you 
 
 ---
 
-## Chapter 7 — Animation, Skeletons & Particles 🔧
+## Chapter 7 — Animation, Skeletons & Particles ✅
 
-*Skeletal cut-out animation and GPU/CPU particle effects. Reading order: **skeleton → particles**.*
+*Two very different kinds of procedural motion: **cut-out skeletal animation** (a character rigged with bones and skinned polygons, blended through an `AnimationTree`) and **GPU particle effects** (the engine's particle system in its full breadth). Reading order: **skeleton → particles**.*
 
-| Demo | Folder | README |
-|------|--------|--------|
-| Skeleton (2D) | [`2d/skeleton/`](2d/skeleton/) | [`README`](2d/skeleton/README.md) |
-| Particles | [`2d/particles/`](2d/particles/) | [`README`](2d/particles/README.md) |
+This chapter's arc moves from animating *a single character in depth* to animating *hundreds of short-lived sprites at once*. **7.1** is the rigging and animation-tree capstone: one GBot robot whose art is 7 `Polygon2D` skin pieces weighted to a 14-bone `Skeleton2D`, with 8 hand-authored clips blended live by an `AnimationTree` so walk/run sync to movement speed and jumps/lands fire as one-shots. **7.2** then widens the lens to a gallery of 17 `GPUParticles2D` emitters that isolate every feature of 2D particles — emission shapes, masks, sub-emitters, turbulence, collision, trails, flipbooks — in one scene.
 
-> Detailed per-demo entries will be added in a later pass.
+---
+
+### 7.1 — Skeleton (2D cut-out animation)
+
+- **Folder:** [`2d/skeleton/`](2d/skeleton/) · **README:** [`2d/skeleton/README.md`](2d/skeleton/README.md#how-to-learn-this-project) · **Renderer:** Compatibility.
+- **Summary:** A fully rigged GBot robot is a `CharacterBody2D` you walk, run, jump, and land with. Its visible "art" is not a sprite but **7 `Polygon2D` skin pieces weighted to a 14-bone `Skeleton2D`**; the `AnimationPlayer` animates each bone's `rotation`, and the skinned polygons deform to follow. A second animation node — the **`AnimationTree`** — blends the 8 clips at runtime so the *right* animation plays for the current state, with walk/run sped up or slowed down to match `velocity.x` and jumps/lands layered on top as one-shots. It is the complete 2D character-rigging pipeline in one runnable project.
+- **Core concepts:** **`Skeleton2D`** + the **`Bone2D`** hierarchy — `Hip → Chest → {Head → Chin, LeftArm/RightArm → Forearm → Hand}`, `Hip → {LeftLeg/RightLeg → LowerLeg → Foot}` (14 bones, each with a `rest` pose); **`Polygon2D` as a skinned mesh** — each polygon's `skeleton` property points at the `Skeleton2D`, and its `bones` array stores a per-vertex weight for every bone (e.g. an elbow vertex is split `0.5/0.5` between the upper-arm and forearm bones so the joint bends smoothly); the **`AnimationPlayer`** holding 8 clips (`idle`/`walk`/`run`/`fly`/`fall`/`jump`/`land`/`land_hard`) that key each `Bone2D`'s `rotation_degrees` (and `Hip.position` for crouch) — *animating the bones, not the polygons*; the **`AnimationTree`** whose root is an **`AnimationNodeBlendTree`** wiring together an **`AnimationNodeTransition`** (the 5-state `idle`/`walk`/`run`/`fly`/`fall` locomotion blend), three **`AnimationNodeOneShot`** nodes (`jump`/`land`/`land_hard` — `land_hard` even uses a track *filter* so only some bones react), and two **`AnimationNodeTimeScale`** nodes that scale `walk`/`run` playback to `velocity.x`; driving the tree from code via parameter paths — `parameters/state/transition_request`, `parameters/jump/request = AnimationNodeOneShot.ONE_SHOT_REQUEST_FIRE`, `parameters/run_timescale/scale`; facing the character by negating `sprite.scale.x` (the rig lives under a `Node2D` *named* "Sprite2D", not a `Sprite2D` node); `CharacterBody2D` locomotion (`move_toward` accel/decel, manual gravity + terminal velocity, **variable jump height** via `velocity.y *= 0.6` on early release, `floor_snap_length`); a `Camera2D` zoomed 4× whose limits are read from `Marker2D`s in `level.gd`; and `physics_interpolation_mode` on the body.
+- **Why here first:** It is the rigging-and-blending capstone — bones, skinning, the AnimationPlayer/AnimationTree split, blend trees, one-shots, and time-scaling all appear in one character, so it is the place to *see* the whole 2D cut-out animation pipeline working together.
+
+---
+
+### 7.2 — Particles (2D GPU particles)
+
+- **Folder:** [`2d/particles/`](2d/particles/) · **README:** [`2d/particles/README.md`](2d/particles/README.md#how-to-learn-this-project) · **Renderer:** Mobile (2D particle trails and HDR glow are Forward+/Mobile features).
+- **Summary:** A wall of **17 labeled `GPUParticles2D`** emitters that each isolate one feature of Godot's 2D particle system: fire, smoke, magic sparks, an animated **flipbook** texture, **mask-shaped emission** (fill / outline / outline-with-direction), a **sub-emitter chain**, **turbulence**, all three **collision modes**, and a moving emitter showing **global-coordinate** particles. The only script (`pause.gd`) toggles pause, trails, and the `WorldEnvironment` glow. It is the reference catalog — open it next to the docs whenever you need a specific particle effect.
+- **Core concepts:** The **`GPUParticles2D`** node — `amount`, `lifetime`, `explosiveness` (`1.0` = a single one-shot burst, used by *Explosion*), `randomness`, **`preprocess`** (pre-simulate so particles are already mid-stream at startup — *Fire* = 1 s, *Flipbook* = a full lifetime), `texture`, `interpolate` (several emitters set it `false`), and node-level **trails** (`trail_enabled`/`trail_lifetime`/`trail_sections`, toggled on the `trailable_particles` group); the **`ParticleProcessMaterial`** — the *same* material class 2D and 3D share, which is why you must tick **`particle_flag_disable_z = true`** for 2D (9 emitters do); the **emission-shape enum** exercised across the gallery (`SPHERE`, `SPHERE_SURFACE`, `BOX`, `POINTS`, `POINTS_NORMALS`, `DIRECTED_POINTS`) plus **mask emission** via `emission_point_texture`/`emission_normal_texture` (*EmitMask* / *OutlineMask* / *DirectionMask* emit from a shape's fill, outline, and outline-with-direction); the velocity/force params (`direction`+`spread`+`initial_velocity_min/max`, `gravity`, `scale_curve` driven by a `CurveTexture`, `color`); **sub-emitters** — a `sub_emitter` `NodePath` + `sub_emitter_mode` (`AT_END` fires when a particle dies, `AT_COLLISION` fires on contact) with `sub_emitter_keep_velocity`, shown as the *ParticlesWithSubemitter → Sparks → Smoke* chain and the collide-and-spawn *CollisionSubemitter*; **turbulence** (`turbulence_enabled` + noise strength/speed/random = a swirling vector field); the three **collision modes** against `LightOccluder2D` colliders — `RIGID` (bounce), `HIDE_ON_CONTACT` (vanish on touch), and the collide→spawn-subemitter combo — controlled by `collision_mode` and `collision_base_size`; **global vs. local coordinates** (*MagicGlobalCoordinates* rides a `Path2D`/`PathFollow2D` so its particles stay in world space as the emitter moves); the **flipbook** sprite-sheet texture; and the **renderer caveat** — trails are Forward+/Mobile only, so `pause.gd` gates the trail controls on `not is_compatibility`, shows an `UnsupportedLabel` on the Compatibility renderer, and bumps `glow_intensity` to compensate for its lower dynamic range. Like 6.2, the bright particle colors (e.g. magic's blue channel `> 1.0`) bloom via the `WorldEnvironment`'s HDR glow.
+- **Why read it last:** The exhaustive particle reference — every 2D-particle feature in one scene — and a natural companion to 6.2 (glow), since the overbright particle colors bloom here too.
 
 ---
 
@@ -313,4 +326,4 @@ This chapter's arc runs from a shader you write *on one sprite* to a shader you 
 
 ---
 
-*This is a living document. Chapters 1–6 are complete; chapters 7–8 are outlined above and will be expanded with detailed per-demo entries (summary, core concepts, and a README link) as the curriculum is built out.*
+*This is a living document. Chapters 1–7 are complete; chapter 8 is outlined above and will be expanded with detailed per-demo entries (summary, core concepts, and a README link) as the curriculum is built out.*
