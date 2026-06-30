@@ -199,17 +199,38 @@ This chapter's arc is a tour of *how* you move a body in Godot 2D: the high-leve
 
 ---
 
-## Chapter 5 — Navigation & Pathfinding 🔧
+## Chapter 5 — Navigation & Pathfinding ✅
 
-*Making agents find their way around obstacles. Reading order: **navigation → navigation_astar → navigation_mesh_chunks**.*
+*Making agents find their way around obstacles. The chapter tours three levels of abstraction: the high-level node API with an editor-baked navmesh, then a grid-only alternative that needs no navmesh at all, then the low-level server API that bakes the mesh at runtime and chunks it for large worlds. Reading order: **navigation → navigation_astar → navigation_mesh_chunks**.*
 
-| Demo | Folder | README |
-|------|--------|--------|
-| Navigation | [`2d/navigation/`](2d/navigation/) | [`README`](2d/navigation/README.md) |
-| Navigation A-star | [`2d/navigation_astar/`](2d/navigation_astar/) | [`README`](2d/navigation_astar/README.md) |
-| Navigation Mesh Chunks | [`2d/navigation_mesh_chunks/`](2d/navigation_mesh_chunks/) | [`README`](2d/navigation_mesh_chunks/README.md) |
+This chapter's arc is a descent through the abstraction stack: 5.1 drives navigation through friendly **nodes** (`NavigationAgent2D` + an editor-baked `NavigationPolygon`), 5.2 swaps the whole system for a self-contained **`AStarGrid2D`** grid solver with a hand-rolled steering follower, and 5.3 peels the nodes off to **bake and chunk navmeshes directly on `NavigationServer2D`** at runtime.
 
-> Detailed per-demo entries will be added in a later pass.
+---
+
+### 5.1 — Navigation (NavigationPolygon + NavigationAgent2D)
+
+- **Folder:** [`2d/navigation/`](2d/navigation/) · **README:** [`2d/navigation/README.md`](2d/navigation/README.md#how-to-learn-this-project)
+- **Summary:** The minimal "click to move" navigation demo. A `CharacterBody2D` carries a `NavigationAgent2D` child; clicking anywhere sets the agent's `target_position`, and each physics frame the character steers toward `get_next_path_position()` until `is_navigation_finished()` returns true. The walkable area is a single editor-baked `NavigationPolygon` assigned to a `NavigationRegion2D`. This is the high-level, node-driven face of Godot's navigation.
+- **Core concepts:** `NavigationPolygon` (the walkable surface, baked in the editor and saved as a `.res` resource); `NavigationRegion2D` (registers that polygon with `NavigationServer2D`); `NavigationAgent2D` as the per-actor path requester (`target_position`, `get_next_path_position()`, `is_navigation_finished()`, the `path_desired_distance` / `target_desired_distance` tuning knobs, and `debug_enabled` to visualize the path); the navigation movement loop (`global_position.direction_to(next_path_position) * movement_speed` → `move_and_slide()`); `NavigationServer2D` doing the real A* over the navmesh *under* those nodes; and a custom `click` input action (left mouse button).
+- **Why here first:** The smallest, cleanest expression of the node-based navigation API. Everything in 5.2 and 5.3 is either an alternative to it or a low-level peel-back of it.
+
+---
+
+### 5.2 — Navigation A-star (grid-based)
+
+- **Folder:** [`2d/navigation_astar/`](2d/navigation_astar/) · **README:** [`2d/navigation_astar/README.md`](2d/navigation_astar/README.md#how-to-learn-this-project)
+- **Summary:** A grid pathfinder that does **not** use `NavigationServer2D` or a navmesh at all. A `TileMapLayer` script owns an `AStarGrid2D`, marks every painted tile solid with `set_point_solid()`, and answers `get_point_path(start, end)`. A `Marker2D` "character" follows the returned waypoint list with a hand-written **steering-behavior** integrator (`steering = desired_velocity - velocity; velocity += steering / MASS`). Right-click teleports and snaps to the grid; left-click sets a destination.
+- **Core concepts:** `AStarGrid2D` (the grid A*: `region`, `cell_size`, `offset`, `default_compute_heuristic` / `default_estimate_heuristic` = `HEURISTIC_MANHATTAN`, `diagonal_mode = DIAGONAL_MODE_NEVER`, `set_point_solid()`, `get_point_path()`); driving pathfinding from a `TileMapLayer` (`get_used_cells()`, `local_to_map()` / `map_to_local()`); a `TileMapLayer._draw()` overlay drawing the path as lines + circles; the **steering-behavior** movement model on a non-physics `Marker2D` (manual `position += velocity * delta`, `rotation = velocity.angle()`, smoothed by `MASS`); an `IDLE` / `FOLLOW` state enum; grid snapping via `round_local_position()` + `reset_physics_interpolation()`; and the `teleport_to` / `move_to` input actions.
+- **Why here second:** The contrast pair to 5.1 — same goal (find a path, walk it), but grid-based and server-less. It teaches *when* `AStarGrid2D` (cheap, strict grid, no baking) is the right tool over a navmesh (free-form surfaces that need baking).
+
+---
+
+### 5.3 — Navigation Mesh Chunks
+
+- **Folder:** [`2d/navigation_mesh_chunks/`](2d/navigation_mesh_chunks/) · **README:** [`2d/navigation_mesh_chunks/README.md`](2d/navigation_mesh_chunks/README.md#how-to-learn-this-project) · **Requires Godot 4.3+.**
+- **Summary:** The low-level capstone. Instead of one editor-baked polygon, it **bakes the navigation mesh at runtime via `NavigationServer2D`** from parsed collision geometry, then **chunks** the world into a grid of separately-baked `NavigationRegion2D`s whose edges align and merge across borders. Three `NavigationAgent2D` debug agents visualize the three `path_postprocessing` modes (corridor-funnel, edge-centered, none) over the same start → target. Mouse-left sets the path start; the cursor position is the target.
+- **Core concepts:** Runtime **navmesh baking** (`NavigationServer2D.bake_from_source_geometry_data()`) from a `NavigationMeshSourceGeometryData2D` filled by `parse_source_geometry_data()` (collecting `PARSED_GEOMETRY_STATIC_COLLIDERS`) plus a hand-added `add_traversable_outline()`; the `NavigationPolygon` baking properties `parsed_geometry_type`, `baking_rect` (limit the bake to a region), `border_size` (pull in neighbor geometry so edges meet), and `agent_radius` (inflate obstacles); the **chunking** strategy — rasterize world bounds into a chunk grid, `grow()` each chunk's bake rect by one chunk so adjacent chunks share geometry, snap vertices with `snappedf()` to kill float-precision artifacts, then add one runtime-created `NavigationRegion2D` per chunk; `map_set_use_edge_connections(map, false)` (well-aligned edges merge by edge key, so the costly edge-connection feature is unneeded); `path_postprocessing` (`PATH_POSTPROCESSING_CORRIDOR_FUNNEL` / `_EDGE_CENTERED` / `_NONE`) shown as three colored debug paths; and the `NavigationServer2D` query API (`map_get_closest_point()`, the `map_get_iteration_id()` sync guard, `map_set_cell_size()`).
+- **Why read it last:** It drops down to the server level 5.1 hid behind its nodes, and shows the pattern you need for *large or streaming* worlds — many baked regions instead of one, with edge-merge as the glue across chunk borders.
 
 ---
 
@@ -255,4 +276,4 @@ This chapter's arc is a tour of *how* you move a body in Godot 2D: the high-leve
 
 ---
 
-*This is a living document. Chapters 1–4 are complete; chapters 5–8 are outlined above and will be expanded with detailed per-demo entries (summary, core concepts, and a README link) as the curriculum is built out.*
+*This is a living document. Chapters 1–5 are complete; chapters 6–8 are outlined above and will be expanded with detailed per-demo entries (summary, core concepts, and a README link) as the curriculum is built out.*
