@@ -10,7 +10,7 @@ Read top-to-bottom and you will build real, transferable Godot skills — every 
 
 - **Per-project READMEs.** Every demo folder has a `README.md`. Once you reach a demo in this guide, open its README's **"How to Learn This Project"** section for the concept it teaches, the key nodes/classes to focus on, the recommended code-reading order, and a hands-on exercise.
 - **Read code, don't just run it.** Open the `.tscn` (scene) and `.gd` (script) files in the Godot editor and follow the reading order given in each README.
-- **Renderer & language.** Most demos are GDScript on the *Compatibility* renderer. Exceptions are noted where relevant (e.g. `glow` and `physics_platformer` use Forward+; `particles` uses the Mobile renderer).
+- **Renderer & language.** All demos are GDScript. Most run on the *Compatibility* (OpenGL) renderer; a handful use the *Mobile* renderer instead (`custom_drawing`, `polygons_lines`, `glow`, `particles`, and `physics_tests`). Per-demo entries note the renderer where it matters. (Note: a few upstream READMEs mislabel their renderer — trust the `project.godot` `rendering_method` line.)
 - **Run them.** Each project has a `project.godot`. Open the folder in Godot 4 and press ▶.
 
 > **Status legend:** ✅ = chapter written. 🔧 = chapter outline in place, detailed entries being added in later passes.
@@ -146,19 +146,56 @@ Recommended reading order within this chapter: **custom_drawing → polygons_lin
 
 ---
 
-## Chapter 4 — 2D Physics 🔧
+## Chapter 4 — 2D Physics ✅
 
-*Moving bodies that collide, from a hand-controlled character to thousands of simulated objects. Reading order: **kinematic_character → platformer → physics_platformer → physics_tests → bullet_shower**.*
+*Moving bodies that collide — from a hand-tuned `CharacterBody2D` controller, to a full platformer, to a `RigidBody2D` version that interacts with the world for real, to the engine's own physics test/benchmark suite, and finally to thousands of objects rendered *without* Nodes. Reading order: **kinematic_character → platformer → physics_platformer → physics_tests → bullet_shower**.*
 
-| Demo | Folder | README |
-|------|--------|--------|
-| Kinematic Character (2D) | [`2d/kinematic_character/`](2d/kinematic_character/) | [`README`](2d/kinematic_character/README.md) |
-| Platformer | [`2d/platformer/`](2d/platformer/) | [`README`](2d/platformer/README.md) |
-| Physics Platformer | [`2d/physics_platformer/`](2d/physics_platformer/) | [`README`](2d/physics_platformer/README.md) |
-| Physics Tests | [`2d/physics_tests/`](2d/physics_tests/) | [`README`](2d/physics_tests/README.md) |
-| Bullet Shower | [`2d/bullet_shower/`](2d/bullet_shower/) | [`README`](2d/bullet_shower/README.md) |
+This chapter's arc is a tour of *how* you move a body in Godot 2D: the high-level **kinematic** contract (`CharacterBody2D` + `move_and_slide()`), then a **full game** built on it, then the contrasting **rigid-body** approach (`RigidBody2D` + `_integrate_forces()`), then the **reference harness** that isolates every primitive, and finally the **data-oriented** extreme that sidesteps Nodes entirely for scale.
 
-> Detailed per-demo entries will be added in a later pass.
+---
+
+### 4.1 — Kinematic Character (2D)
+
+- **Folder:** [`2d/kinematic_character/`](2d/kinematic_character/) · **README:** [`2d/kinematic_character/README.md`](2d/kinematic_character/README.md#how-to-learn-this-project)
+- **Summary:** A `CharacterBody2D` (Cubio) explores a level with acceleration + friction movement, a fixed-height jump, four one-way platforms, two linearly-moving platforms, a rotating turntable, and angled ramps — then reaches a `Princess` `Area2D` trigger that reveals a win message. It is the distilled, comment-rich tour of the Godot 4 `CharacterBody2D` contract.
+- **Core concepts:** The `CharacterBody2D` `velocity` / `move_and_slide()` contract (no arguments in Godot 4 — what used to be arguments are now node properties); manual gravity integration (`velocity.y += gravity * delta`, gravity read from `ProjectSettings`); an acceleration + friction horizontal model (`move_toward()` for deceleration, additive `+= force * delta` for acceleration, with a `clamp()` cap); `is_on_floor()` as a **post-`move_and_slide()`** query (ordering matters); the jump as an edge-triggered velocity impulse; **one-way collisions** (`CollisionShape2D.one_way_collision = true`); moving/rotating platforms built as `CharacterBody2D`s driven by an `AnimationPlayer` in **physics callback mode** so `move_and_slide()` automatically carries the rider using the platform's velocity; `StaticBody2D` ramps vs. `CharacterBody2D` movers; `Area2D` as a non-solid `body_entered` trigger; signal wiring via the `[connection]` block at the bottom of the `.tscn`; `TileMapLayer` tile collision; and `physics_ticks_per_second = 120` for smoother motion.
+- **Why here first:** The smallest, most readable `CharacterBody2D` controller in the repo. Every later physics demo assumes you understand this contract, so lock it in here.
+
+---
+
+### 4.2 — Platformer
+
+- **Folder:** [`2d/platformer/`](2d/platformer/) · **README:** [`2d/platformer/README.md`](2d/platformer/README.md#how-to-learn-this-project)
+- **Summary:** A complete pixel-art `CharacterBody2D` platformer: accelerated running, **variable-height + double jump**, slope-snapping gated by a `RayCast2D`, `RigidBody2D` bullets that destroy `CharacterBody2D` enemies, `Area2D` coin pickups, a five-layer collision filtering scheme, a parallax background, a pause menu, and a **two-player splitscreen** mode that renders one shared world from two cameras.
+- **Core concepts:** `CharacterBody2D` platformer movement (`move_toward()` accel/decel, terminal velocity, `floor_stop_on_slope` toggled by a `PlatformDetector` `RayCast2D`); variable jump height (`velocity.y *= 0.6` on early release) and a recharging double jump; one-way platforms; **collision layers and masks** as bitmask filtering (five named layers: player / enemies / coins / platforms / ground — masks like `30`, `26`, `24` are their sums); `Area2D` coin pickup via `body_entered` with `monitoring` toggling; a custom **`coin_collected` signal declared on `Player` but emitted by the `Coin`**, wired through the `.tscn` to a `PauseMenu` → `CoinsCounter`; `RigidBody2D` bullets (`contact_monitor` + `body_entered`, instancing with `set_as_top_level` and an initial `linear_velocity`); `AnimationPlayer` tracks driving sprite frames, audio, **method calls** (`queue_free`), and **properties** (`collision_layer`, `monitoring`); `ParallaxBackground`/`ParallaxLayer` `motion_scale`; splitscreen via `SubViewportContainer` + `SubViewport` sharing `world_2d` and redirecting `Camera2D.custom_viewport`; input **action suffixing** (`_p1`/`_p2`) to reuse one `Player` scene for two players; and `tree.paused` + `process_mode` for the pause menu.
+- **Why here second:** The first *full game* built on the 4.1 contract — it layers on the production patterns (collision layers, cross-node signals, bullets, parallax, splitscreen) that the minimal demo deliberately omits.
+
+---
+
+### 4.3 — Physics Platformer
+
+- **Folder:** [`2d/physics_platformer/`](2d/physics_platformer/) · **README:** [`2d/physics_platformer/README.md`](2d/physics_platformer/README.md#how-to-learn-this-project)
+- **Summary:** The same genre as 4.2, but the player and enemies are **`RigidBody2D` driven by a custom `_integrate_forces(state)` integrator** — so they interact with the world *for real*: standing on one end of a `PinJoint2D` seesaw torques it, moving platforms physically carry them, and bullet impacts knock enemies into a death-spin. The canonical counterpoint to the `CharacterBody2D` approach. *(Renderer note: the upstream README says "Forward+" but the project actually uses the Compatibility renderer — `gl_compatibility` in `project.godot`.)*
+- **Core concepts:** `RigidBody2D` as a character with **`custom_integrator = true`** (so the script owns all integration); the `_integrate_forces(PhysicsDirectBodyState2D)` entry point — `get_linear_velocity()`, mutate, `set_linear_velocity()`; re-applying gravity yourself via `state.get_total_gravity() * step`; **contact-based floor detection** (`contact_monitor` + scanning `get_contact_count()` / `get_contact_local_normal()` for an upward-pointing normal) with coyote time; force-like accel/decel scaled by `state.get_step()` with separate air tuning; riding platforms by sampling `state.get_contact_collider_velocity_at_position()`; a `SeparationRayShape2D` "foot" + `lock_rotation` + `physics_material_override` (friction = 0) to tame the rigid body into a platformer feel; `PinJoint2D` hinge (`RigidBody2D` plank + `StaticBody2D` pillar = seesaw); `AnimationPlayer`-driven `CharacterBody2D` moving platforms; `one_way_collision`; bullet/enemy interaction via **contact iteration inside `_integrate_forces`** (not `body_entered`) plus `add_collision_exception_with` and continuous collision detection (`continuous_cd`); compound collision shapes and `RayCast2D` ledge patrol; 120 Hz ticks + physics interpolation.
+- **Why here third:** It deliberately contrasts 4.2 — same goal, a fundamentally more powerful (and harder) physics model — so you see *why* most platformers use `CharacterBody2D` and *when* a rigid body is worth the cost.
+
+---
+
+### 4.4 — Physics Tests
+
+- **Folder:** [`2d/physics_tests/`](2d/physics_tests/) · **README:** [`2d/physics_tests/README.md`](2d/physics_tests/README.md#how-to-learn-this-project) · **Renderer:** Mobile.
+- **Summary:** Godot's official 2D physics **test and benchmark harness** — a menu of isolated test scenes covering every body type, every collision shape, all three 2D joints, raycasting, one-way collisions (including TileMap corner edge cases) and stack/pyramid stability, plus broadphase and contact-solving performance benchmarks with live FPS and per-tick timing. Not a game: it is the reference room for the entire 2D physics engine.
+- **Core concepts:** The **test-framework pattern** itself — a data-driven menu (`tests.gd` list → reusable `OptionMenu` → `tests_menu.gd` frees/loads/instantiates each test scene as a root child) and a shared `Test` base class (timers, `wait_for_physics_ticks()`, debug-draw helpers, rigid-body factories, force-enabled `debug_collisions_hint`); `CharacterBody2D` vs. `RigidBody2D` controller variants including ray-shape variants and floor options (snap, stop-on-slope, constant-speed); every collision **shape type** (Rectangle, Circle, Capsule, ConvexPolygon, ConcaveSegments); manual queries via `PhysicsDirectSpaceState2D.collide_shape()` and `intersect_ray()` with `PhysicsShapeQueryParameters2D`; the three **2D joints** — `PinJoint2D`, `GrooveJoint2D`, `DampedSpringJoint2D`; one-way platforms and one-way TileMap tiles; stack/pyramid stability as a contact-solver regression test; **physics performance tuning** — broadphase add/move/remove of 10,000 bodies, contact-solving cost across shape types, and the `Engine` knobs (`physics_ticks_per_second`, `time_scale`, `max_physics_steps_per_frame`, `physics_interpolation`); and autoload services (`Log`, `System`).
+- **Why here fourth:** The exhaustive reference — every primitive from 4.1–4.3 appears here in isolation and is measurable, so it is the place to *see* and *stress* each concept once you understand the demos above.
+
+---
+
+### 4.5 — Bullet Shower
+
+- **Folder:** [`2d/bullet_shower/`](2d/bullet_shower/) · **README:** [`2d/bullet_shower/README.md`](2d/bullet_shower/README.md#how-to-learn-this-project)
+- **Summary:** 500 bullets stream across the screen and react to a mouse-controlled player — yet there is **not a single bullet `Node` in the scene tree**. Each bullet is a raw `PhysicsServer2D` `RID` body, and all 500 are painted in one `Node2D._draw()` pass. It is the data-oriented extreme: thousands of colliding objects with zero per-object Node overhead.
+- **Core concepts:** *Why Nodes are expensive at scale* (vs. instancing thousands of `RigidBody2D`/`Sprite2D`); the **`PhysicsServer2D`** low-level API (`body_create` / `body_set_space` / `body_add_shape` / `body_set_state` / `free_rid`) and the **`RID`** type as an opaque server handle; one shared `CircleShape2D` `RID` reused by all bodies; disabling bullet-vs-bullet collision via `body_set_collision_mask(body, 0)` as the single biggest physics win; storing bullet state in a plain GDScript `Array` of a custom `Bullet` class (`position` / `speed` / `body`) updated in `_physics_process`; **custom `_draw()` + `queue_redraw()`** for batched `draw_texture` rendering (this is *not* a `MultiMesh` and *not* a Node pool); pushing each server body's `Transform2D` every frame; **mandatory `RID` cleanup in `_exit_tree`**; and `Area2D` `body_shape_entered`/`exited` signals still firing for non-node bodies, tracked with a `touching` counter.
+- **Why read it last:** The scalability capstone — after learning every physics body type, here is how to *sidestep them entirely* when you genuinely need thousands of objects.
 
 ---
 
@@ -218,4 +255,4 @@ Recommended reading order within this chapter: **custom_drawing → polygons_lin
 
 ---
 
-*This is a living document. Chapters 1–3 are complete; chapters 4–8 are outlined above and will be expanded with detailed per-demo entries (summary, core concepts, and a README link) as the curriculum is built out.*
+*This is a living document. Chapters 1–4 are complete; chapters 5–8 are outlined above and will be expanded with detailed per-demo entries (summary, core concepts, and a README link) as the curriculum is built out.*
