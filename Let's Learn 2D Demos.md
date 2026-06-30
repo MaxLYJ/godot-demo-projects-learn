@@ -78,17 +78,38 @@ Recommended reading order within this chapter: **instancing → pong → dodge_t
 
 ---
 
-## Chapter 2 — Custom Drawing & Vector Graphics 🔧
+## Chapter 2 — Custom Drawing & Vector Graphics ✅
 
-*Drawing things procedurally with code instead of sprites: `_draw()`, polygons, lines, and runtime-rendered textures. Reading order: **custom_drawing → polygons_lines → drawable_textures**.*
+*Drawing things procedurally instead of with sprite images: the `_draw()` API, the `Polygon2D`/`Line2D` nodes, and runtime-paintable textures. Three demos, three angles on the same idea.*
 
-| Demo | Folder | README |
-|------|--------|--------|
-| Custom Drawing | [`2d/custom_drawing/`](2d/custom_drawing/) | [`README`](2d/custom_drawing/README.md) |
-| Polygons & Lines | [`2d/polygons_lines/`](2d/polygons_lines/) | [`README`](2d/polygons_lines/README.md) |
-| Drawable Textures | [`2d/drawable_textures/`](2d/drawable_textures/) | [`README`](2d/drawable_textures/README.md) |
+Recommended reading order within this chapter: **custom_drawing → polygons_lines → drawable_textures**.
 
-> Detailed per-demo entries will be added in a later pass. Read each folder's `README.md` ("How to Learn This Project") in the meantime.
+---
+
+### 2.1 — Custom Drawing
+
+- **Folder:** [`2d/custom_drawing/`](2d/custom_drawing/) · **README:** [`2d/custom_drawing/README.md`](2d/custom_drawing/README.md#how-to-learn-this-project)
+- **Summary:** A `TabContainer` whose seven tabs (`Panel`s) are each a `@tool` script overriding `_draw()` — one tab per category of the `CanvasItem.draw_*` API: lines, rectangles, polygons, meshes, textures, text, and animation. The reference catalog for "draw X with code."
+- **Core concepts:** The `_draw()` / `queue_redraw()` contract, `@tool` scripts, the full `draw_*` family (`draw_line`/`draw_circle`/`draw_arc`/`draw_rect`/`draw_polygon`/`draw_polyline`/`draw_multiline`/`draw_texture`/`draw_string`/`draw_mesh`/`draw_multimesh`), the *stateful* `draw_set_transform()` / `draw_set_transform_matrix()`, `TAU`, `StyleBoxFlat`, `MultiMesh`, and per-command antialiasing vs. 2D MSAA.
+- **Why here first:** It is the exhaustive, code-driven foundation; the next two demos show the same drawing concepts expressed as **nodes** and as a **GPU paint target**.
+
+---
+
+### 2.2 — Polygons & Lines
+
+- **Folder:** [`2d/polygons_lines/`](2d/polygons_lines/) · **README:** [`2d/polygons_lines/README.md`](2d/polygons_lines/README.md#how-to-learn-this-project)
+- **Summary:** The **node-based** counterpart to `custom_drawing`. Complex shapes are built not with `draw_*` calls but by placing `Polygon2D` and `Line2D` nodes and tuning their Inspector properties — textured and "inverted" (cut-out) polygons, plus lines with width curves, gradients, textures, and bevel/round joints.
+- **Core concepts:** `Polygon2D` (`polygon`, `uv`, `texture`, `invert_enabled`/`invert_border`, `antialiased`), `Line2D` (`width_curve`, `gradient`, `texture`/`texture_mode`, `joint_mode`, cap modes, `round_precision`, `sharp_limit`), a hand-crafted line texture for cheap antialiasing, `Curve`/`Gradient`/`NoiseTexture2D` sub-resources, and 2D MSAA (Forward+/Mobile only).
+- **Why read it second:** Having seen the raw `draw_*` calls, here you learn the higher-level node wrappers you'll reach for 90% of the time in real projects.
+
+---
+
+### 2.3 — Drawable Textures
+
+- **Folder:** [`2d/drawable_textures/`](2d/drawable_textures/) · **README:** [`2d/drawable_textures/README.md`](2d/drawable_textures/README.md#how-to-learn-this-project)
+- **Summary:** A paint program built on `DrawableTexture2D` — a GPU texture you stamp onto at runtime via `blit_rect()`. Every brushstroke on the 2D canvas updates a 3D cube/sphere live, because one shared texture feeds both a `TextureRect` and a `StandardMaterial3D.albedo_texture`.
+- **Core concepts:** `DrawableTexture2D` (`new()` + `setup()`), `blit_rect()` GPU blits, sharing one texture across 2D and 3D, `GradientTexture2D` brushes (paint vs. erase), the `gui_input` signal, signal `.bind()` for many swatches → one handler, and embedding 3D with `SubViewport`/`SubViewportContainer`.
+- **Why read it last:** It is the most modern and applied of the three — runtime texture painting — and a satisfying capstone that ties 2D drawing into the broader engine.
 
 ---
 
@@ -178,4 +199,4 @@ Recommended reading order within this chapter: **instancing → pong → dodge_t
 
 ---
 
-*This is a living document. Chapter 1 is complete; chapters 2–8 are outlined above and will be expanded with detailed per-demo entries (summary, core concepts, and a README link) as the curriculum is built out.*
+*This is a living document. Chapters 1 and 2 are complete; chapters 3–8 are outlined above and will be expanded with detailed per-demo entries (summary, core concepts, and a README link) as the curriculum is built out.*
