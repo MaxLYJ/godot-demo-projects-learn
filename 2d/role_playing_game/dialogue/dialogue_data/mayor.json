@@ -1,0 +1,75 @@
+{
+	"nodes": {
+		"start": {
+			"name": "MAYOR",
+			"text": "Oh — a visitor! You must be the adventurer everyone's talking about.",
+			"next": "quest_branch"
+		},
+
+		"quest_branch": {
+			"name": "MAYOR",
+			"text": "How can I help you today?",
+			"requires": {},
+			"choices": [
+				{
+					"text": "What's wrong around here?",
+					"requires": { "quest_a": null },
+					"next": "intro_quest"
+				},
+				{
+					"text": "I'll take the slimes quest. (accept)",
+					"requires": { "quest_a": null },
+					"next": "accept_quest"
+				},
+				{
+					"text": "Did you say... slimes? Tell me more. (in progress)",
+					"requires": { "quest_a": "in_progress" },
+					"next": "in_progress_reminder"
+				},
+				{
+					"text": "I've cleared the slimes! (complete)",
+					"requires": { "quest_a": "in_progress" },
+					"sets": { "quest_a": "completed", "slimes_defeated": true },
+					"next": "complete_quest"
+				},
+				{
+					"text": "Goodbye.",
+					"next": ""
+				}
+			]
+		},
+
+		"intro_quest": {
+			"name": "MAYOR",
+			"text": "Slimes have infested the cellar of the tavern. Please, you have to help us!",
+			"next": "quest_branch"
+		},
+
+		"accept_quest": {
+			"name": "MAYOR",
+			"text": "Thank you! Go defeat 3 slimes in the cellar, then come back to me.",
+			"sets": { "quest_a": "in_progress" },
+			"next": "quest_branch"
+		},
+
+		"in_progress_reminder": {
+			"name": "MAYOR",
+			"text": "The cellar is just east of the tavern. Come back when the slimes are dealt with.",
+			"next": "quest_branch"
+		},
+
+		"complete_quest": {
+			"name": "MAYOR",
+			"text": "Incredible! The cellar is slime-free at last. Thank you, truly — you've saved our tavern.",
+			"sets": { "reward_given": true },
+			"next": "after_complete"
+		},
+
+		"after_complete": {
+			"name": "MAYOR",
+			"text": "If you ever need a warm meal, it's on the house. Farewell, hero!",
+			"requires": { "quest_a": "completed" },
+			"next": ""
+		}
+	}
+}
